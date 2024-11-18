@@ -3,11 +3,13 @@ import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel, Field
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder  # type: ignore
+from sklearn.ensemble import RandomForestClassifier  # type: ignore
+from sklearn.model_selection import train_test_split  # type: ignore
 import cv2
 import tempfile
+
+DATASET_PATH = os.path.join(os.path.dirname(__file__), "dataset")
 
 
 class ModelConfig(BaseModel):
@@ -48,6 +50,13 @@ class CosplayCharacterRecognizer:
 
     def train_model(self):
         features, labels = [], []
+        if not os.path.exists(self.config.dataset_path) or not os.listdir(
+            self.config.dataset_path
+        ):
+            raise ValueError(
+                f"Dataset path '{self.config.dataset_path}' is empty or does not exist"
+            )
+
         for character_folder in os.listdir(self.config.dataset_path):
             character_path = os.path.join(self.config.dataset_path, character_folder)
 
@@ -65,7 +74,7 @@ class CosplayCharacterRecognizer:
         labels_encoded = self.label_encoder.fit_transform(labels)
         X, y = np.array(features), np.array(labels_encoded)
 
-        X_train, X_test, y_train, y_test = train_test_split(
+        X_train, _, y_train, _ = train_test_split(
             X, y, test_size=self.config.test_size, random_state=self.config.random_state
         )
 
@@ -92,15 +101,13 @@ class CosplayCharacterRecognizer:
 app = FastAPI(title="Cosplay Character Recognition")
 
 # Global model instance
-recognizer = CosplayCharacterRecognizer(
-    ModelConfig(dataset_path="/path/to/cosplay/dataset")
-)
+recognizer = CosplayCharacterRecognizer(ModelConfig(dataset_path=DATASET_PATH))
 
 
 @app.post("/recognize", response_model=CharacterRecognitionResult)
 async def recognize_character(file: UploadFile = File(...)):
     # Validate file type (optional)
-    if not file.content_type.startswith("image/"):
+    if file.content_type is None or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
     # Save uploaded file to temporary location
