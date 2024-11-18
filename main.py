@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split  # type: ignore
 import cv2
 import tempfile
 
-DATASET_PATH = os.path.join(os.path.dirname(__file__), "dataset")
+DATASET_PATH = os.path.join(os.path.dirname(__file__), "dataset/data/test")
 
 
 class ModelConfig(BaseModel):
