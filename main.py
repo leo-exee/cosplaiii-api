@@ -2,7 +2,6 @@ import os
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
