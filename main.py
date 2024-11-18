@@ -1,19 +1,19 @@
 import os
 import numpy as np
+import pandas as pd
 import uvicorn
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from pydantic import BaseModel, Field
-from sklearn.preprocessing import LabelEncoder  # type: ignore
-from sklearn.ensemble import RandomForestClassifier  # type: ignore
-from sklearn.model_selection import train_test_split  # type: ignore
 import cv2
 import tempfile
-
-DATASET_PATH = os.path.join(os.path.dirname(__file__), "dataset/data/test")
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from pydantic import BaseModel, Field
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 
 class ModelConfig(BaseModel):
     dataset_path: str = Field(..., description="Path to cosplay dataset")
+    csv_path: str = Field(..., description="Path to CSV file")
     test_size: float = Field(default=0.2, ge=0.1, le=0.5)
     n_estimators: int = Field(default=100, gt=0)
     random_state: int = 42
@@ -49,30 +49,34 @@ class CosplayCharacterRecognizer:
         return hog_features.flatten()
 
     def train_model(self):
+        # Charger le CSV
+        df = pd.read_csv(self.config.csv_path)
+
         features, labels = [], []
-        if not os.path.exists(self.config.dataset_path) or not os.listdir(
-            self.config.dataset_path
-        ):
-            raise ValueError(
-                f"Dataset path '{self.config.dataset_path}' is empty or does not exist"
-            )
 
-        for character_folder in os.listdir(self.config.dataset_path):
-            character_path = os.path.join(self.config.dataset_path, character_folder)
+        # Colonnes des labels (à partir de la 2ème colonne)
+        label_columns = df.columns[1:]
 
-            if os.path.isdir(character_path):
-                for image_file in os.listdir(character_path):
-                    image_path = os.path.join(character_path, image_file)
+        for _, row in df.iterrows():
+            image_path = os.path.join(self.config.dataset_path, row["filename"])
 
-                    try:
+            if os.path.exists(image_path):
+                try:
+                    # Trouver l'index du label 1
+                    label_index = np.where(row[label_columns].values == 1)[0]
+                    if len(label_index) > 0:
+                        label = label_columns[label_index[0]]
+
                         feature_vector = self._extract_features(image_path)
                         features.append(feature_vector)
-                        labels.append(character_folder)
-                    except Exception as e:
-                        print(f"Error processing {image_path}: {e}")
+                        labels.append(label)
+                except Exception as e:
+                    print(f"Erreur lors du traitement de {image_path}: {e}")
 
+        # Encodage des labels
         labels_encoded = self.label_encoder.fit_transform(labels)
-        X, y = np.array(features), np.array(labels_encoded)
+        X = np.array(features)
+        y = np.array(labels_encoded)
 
         X_train, _, y_train, _ = train_test_split(
             X, y, test_size=self.config.test_size, random_state=self.config.random_state
@@ -101,7 +105,12 @@ class CosplayCharacterRecognizer:
 app = FastAPI(title="Cosplay Character Recognition")
 
 # Global model instance
-recognizer = CosplayCharacterRecognizer(ModelConfig(dataset_path=DATASET_PATH))
+DATASET_PATH = os.path.dirname(__file__)
+CSV_PATH = os.path.join(DATASET_PATH, "dataset/data/data/test/labels.csv")
+
+recognizer = CosplayCharacterRecognizer(
+    ModelConfig(dataset_path=DATASET_PATH, csv_path=CSV_PATH)
+)
 
 
 @app.post("/recognize", response_model=CharacterRecognitionResult)
