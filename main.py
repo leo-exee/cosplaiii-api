@@ -58,20 +58,22 @@ class CosplayCharacterRecognizer:
         label_columns = df.columns[1:]
 
         for _, row in df.iterrows():
-            image_path = os.path.join(self.config.dataset_path, row["filename"])
+            image_path = os.path.join(
+                self.config.dataset_path + "/dataset/data/data/test/", row["filename"]
+            )
 
-            if os.path.exists(image_path):
-                try:
-                    # Trouver l'index du label 1
-                    label_index = np.where(row[label_columns].values == 1)[0]
-                    if len(label_index) > 0:
-                        label = label_columns[label_index[0]]
+            try:
+                if os.path.exists(image_path):
+                    raise ValueError(f"Le fichier {image_path} n'existe pas")
+                label_index = np.where(row[label_columns].values == 1)[0]
+                if len(label_index) > 0:
+                    label = label_columns[label_index[0]]
 
-                        feature_vector = self._extract_features(image_path)
-                        features.append(feature_vector)
-                        labels.append(label)
-                except Exception as e:
-                    print(f"Erreur lors du traitement de {image_path}: {e}")
+                    feature_vector = self._extract_features(image_path)
+                    features.append(feature_vector)
+                    labels.append(label)
+            except Exception as e:
+                print(f"Erreur lors du traitement de {image_path}: {e}")
 
         # Encodage des labels
         labels_encoded = self.label_encoder.fit_transform(labels)
@@ -136,6 +138,12 @@ async def recognize_character(file: UploadFile = File(...)):
     finally:
         # Clean up temporary file
         os.unlink(tmp_file_path)
+
+
+@app.get("/train")
+async def train_model():
+    recognizer.train_model()
+    return {"status": "success"}
 
 
 if __name__ == "__main__":
