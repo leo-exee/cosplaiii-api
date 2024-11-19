@@ -1,23 +1,27 @@
 import os
+import json
 import numpy as np
-import pandas as pd
-import uvicorn
-import cv2
-import tempfile
+import tensorflow as tf
+from tensorflow.keras.models import Model, load_model, Sequential
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.applications.resnet50 import preprocess_input
+from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from pydantic import BaseModel, Field
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+from pydantic import BaseModel
+import tempfile
+import uvicorn
 
 
+# Configuration
 class ModelConfig(BaseModel):
-    dataset_path: str = Field(..., description="Path to cosplay dataset")
-    csv_path: str = Field(..., description="Path to CSV file")
-    test_size: float = Field(default=0.2, ge=0.1, le=0.5)
-    n_estimators: int = Field(default=100, gt=0)
-    random_state: int = 42
-    image_size: tuple = (128, 128)
+    dataset_path: str
+    image_size: tuple = (224, 224)  # ResNet50 requires 224x224 images
+    batch_size: int = 16
+    epochs: int = 20
+    learning_rate: float = 0.0001
+    test_split: float = 0.2  # Percentage of data for validation
 
 
 class CharacterRecognitionResult(BaseModel):
@@ -29,115 +33,122 @@ class CosplayCharacterRecognizer:
     def __init__(self, config: ModelConfig):
         self.config = config
         self.model = None
-        self.label_encoder = LabelEncoder()
-        self.train_model()
+        self.label_map = {}
+        self.best_model_path = os.path.join(self.config.dataset_path, "cosplay_model.keras")
+        self.label_map_path = os.path.join(self.config.dataset_path, "label_map.json")
+        self._initialize_model()
 
-    def _extract_features(self, image_path):
-        print(f"Extracting features for: {image_path}")
-        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        if img is None:
-            raise ValueError(f"Image {image_path} could not be read or does not exist")
-        img_resized = cv2.resize(img, self.config.image_size)
-        return self._compute_hog_features(img_resized)
+    def _initialize_model(self):
+        """Initialize the model: load the best model or prepare for training."""
+        if os.path.exists(self.best_model_path) and os.path.exists(self.label_map_path):
+            print("Loading existing model and label map...")
+            self.model = load_model(self.best_model_path)
+            self._load_label_map()
+        else:
+            print("No existing model found. Please train the model.")
 
-    def _compute_hog_features(self, img, cell_size=(8, 8), block_size=(2, 2)):
-        print(f"Computing HOG features for image of size {img.shape}")
-        hog = cv2.HOGDescriptor(
-            _winSize=(img.shape[1], img.shape[0]),
-            _blockSize=(block_size[1] * cell_size[1], block_size[0] * cell_size[0]),
-            _blockStride=(cell_size[1], cell_size[0]),
-            _cellSize=(cell_size[1], cell_size[0]),
-            _nbins=9,
+    def _load_label_map(self):
+        """Load the label map from a JSON file."""
+        with open(self.label_map_path, "r") as f:
+            self.label_map = json.load(f)
+
+    def _save_label_map(self):
+        """Save the label map to a JSON file."""
+        with open(self.label_map_path, "w") as f:
+            json.dump(self.label_map, f)
+
+    def _create_model(self, num_classes):
+        """Create a ResNet50-based model for classification."""
+        base_model = ResNet50(weights="imagenet", include_top=False, input_shape=self.config.image_size + (3,))
+        x = GlobalAveragePooling2D()(base_model.output)
+        x = Dense(512, activation="relu")(x)
+        x = Dropout(0.5)(x)
+        output = Dense(num_classes, activation="softmax")(x)
+        model = Model(inputs=base_model.input, outputs=output)
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=self.config.learning_rate),
+            loss="categorical_crossentropy",
+            metrics=["accuracy"]
         )
-        hog_features = hog.compute(img)
-        return hog_features.flatten()
+        return model
 
     def train_model(self):
-        print("Loading dataset...")
-        df = pd.read_csv(self.config.csv_path)
-
-        features, labels = [], []
-
-        # Get label columns (from the second column onward)
-        label_columns = df.columns[1:]
-        print(f"Label columns: {label_columns}")
-
-        for _, row in df.iterrows():
-            image_path = os.path.join(self.config.dataset_path + "/dataset/data/data/test/", row["filename"])
-            print(f"Processing file: {image_path}")
-
-            if os.path.exists(image_path):
-                try:
-                    label_index = np.where(row[label_columns].values == 1)[0]
-                    if len(label_index) > 0:
-                        label = label_columns[label_index[0]]
-                        print(f"Found label: {label}")
-
-                        feature_vector = self._extract_features(image_path)
-                        features.append(feature_vector)
-                        labels.append(label)
-                    else:
-                        print(f"No label found for: {image_path}")
-                except Exception as e:
-                    print(f"Error processing {image_path}: {e}")
-            else:
-                print(f"File does not exist: {image_path}")
-
-        # Check if we have collected features and labels
-        if not features or not labels:
-            raise ValueError("No data found. Please check your dataset and CSV file.")
-
-        # Encode labels
-        print("Encoding labels...")
-        labels_encoded = self.label_encoder.fit_transform(labels)
-        X = np.array(features)
-        y = np.array(labels_encoded)
-
-        print(f"Dataset size: {X.shape[0]} samples")
-        print("Splitting dataset...")
-        X_train, _, y_train, _ = train_test_split(
-            X, y, test_size=self.config.test_size, random_state=self.config.random_state
+        """Train the model using images from the dataset."""
+        # Data Augmentation and Data Preparation
+        datagen = ImageDataGenerator(
+            preprocessing_function=preprocess_input,
+            validation_split=self.config.test_split,
+            rotation_range=20,
+            width_shift_range=0.2,
+            height_shift_range=0.2,
+            zoom_range=0.2,
+            horizontal_flip=True
         )
 
-        print("Training model...")
-        self.model = RandomForestClassifier(
-            n_estimators=self.config.n_estimators, random_state=self.config.random_state
+        train_gen = datagen.flow_from_directory(
+            self.config.dataset_path,
+            target_size=self.config.image_size,
+            batch_size=self.config.batch_size,
+            subset="training",
+            class_mode="categorical"
         )
-        self.model.fit(X_train, y_train)
-        print("Model trained successfully.")
+        val_gen = datagen.flow_from_directory(
+            self.config.dataset_path,
+            target_size=self.config.image_size,
+            batch_size=self.config.batch_size,
+            subset="validation",
+            class_mode="categorical"
+        )
+
+        # Save the label map
+        self.label_map = train_gen.class_indices
+        self._save_label_map()
+
+        # Create the model
+        num_classes = len(train_gen.class_indices)
+        self.model = self._create_model(num_classes)
+
+        # Callbacks
+        early_stopping = EarlyStopping(monitor="val_accuracy", patience=5, restore_best_weights=True)
+        model_checkpoint = ModelCheckpoint(self.best_model_path, monitor="val_accuracy", save_best_only=True)
+
+        print("Starting training...")
+        self.model.fit(
+            train_gen,
+            validation_data=val_gen,
+            epochs=self.config.epochs,
+            callbacks=[early_stopping, model_checkpoint]
+        )
+        print("Training complete. Best model saved.")
 
     def predict_character(self, image_path):
+        """Predict the character from an image."""
         if self.model is None:
             raise ValueError("Model must be trained first")
 
-        print(f"Predicting character for: {image_path}")
-        features = self._extract_features(image_path)
-        proba = self.model.predict_proba([features])[0]
-        prediction = np.argmax(proba)  # Use argmax to avoid out-of-bounds errors
+        # Load and preprocess the image
+        img = load_img(image_path, target_size=self.config.image_size)
+        img_array = img_to_array(img)
+        img_array = preprocess_input(img_array)
+        img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
 
-        if prediction >= len(self.label_encoder.classes_):
-            raise ValueError(
-                f"Prediction index {prediction} is invalid. Classes: {self.label_encoder.classes_}"
-            )
+        # Make a prediction
+        predictions = self.model.predict(img_array)
+        predicted_idx = np.argmax(predictions[0])
+        confidence = predictions[0][predicted_idx]
+        character = [name for name, idx in self.label_map.items() if idx == predicted_idx][0]
 
-        character = self.label_encoder.inverse_transform([prediction])[0]
-        confidence = proba[prediction]
-
-        print(f"Prediction: {character}, Confidence: {confidence}")
         return character, confidence
 
 
 # FastAPI Application
 app = FastAPI(title="Cosplay Character Recognition")
 
-# Global model instance
-DATASET_PATH = os.path.dirname(__file__)
-CSV_PATH = os.path.join(DATASET_PATH, "dataset/data/data/test/labels.csv")
+DATASET_PATH = os.path.join(os.path.dirname(__file__), "dataset")
 
-print("Initializing model...")
 try:
     recognizer = CosplayCharacterRecognizer(
-        ModelConfig(dataset_path=DATASET_PATH, csv_path=CSV_PATH)
+        ModelConfig(dataset_path=DATASET_PATH)
     )
     print("Model initialized.")
 except Exception as e:
@@ -147,21 +158,22 @@ except Exception as e:
 
 @app.get("/train")
 async def train_model():
+    """Endpoint to train the model."""
     try:
         recognizer.train_model()
-        return {"status": "success"}
+        return {"status": "success", "message": "Model trained successfully."}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 
 
 @app.post("/recognize", response_model=CharacterRecognitionResult)
 async def recognize_character(file: UploadFile = File(...)):
+    """Endpoint to recognize a character from an uploaded image."""
     if recognizer is None:
         raise HTTPException(
             status_code=500, detail="Model not initialized. Please check logs."
         )
 
-    # Validate file type (optional)
     if file.content_type is None or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
@@ -172,7 +184,8 @@ async def recognize_character(file: UploadFile = File(...)):
     try:
         character, confidence = recognizer.predict_character(tmp_file_path)
         return CharacterRecognitionResult(
-            character=character, confidence=float(confidence)
+            character=character,
+            confidence=float(confidence)
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
