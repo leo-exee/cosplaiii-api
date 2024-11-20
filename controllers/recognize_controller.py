@@ -8,7 +8,7 @@ from services.recognizer_service import (
 
 recognize_controller = APIRouter(
     prefix="/recognize",
-    tags=["recognize"],
+    tags=["Recognize"],
 )
 
 
