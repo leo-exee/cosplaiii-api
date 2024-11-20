@@ -33,7 +33,7 @@ class ModelConfig(BaseModel):
 class CharacterRecognitionResult(BaseModel):
     character: str
     confidence: float
-    image_url: str
+    image_base64: str
 
 
 class CosplayCharacterRecognizer:
@@ -237,7 +237,7 @@ async def recognize_character(file: UploadFile = File(...)):
 
         # Construct and return the result
         return CharacterRecognitionResult(
-            character=character, confidence=float(confidence), image_url=image_base64
+            character=character, confidence=float(confidence), image_base64=image_base64
         )
     except Exception as e:
         raise HTTPException(
