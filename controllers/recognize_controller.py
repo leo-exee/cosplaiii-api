@@ -27,7 +27,7 @@ async def recognize_character_controller(file: UploadFile = File(...)):
     return await recognize_character_service(file)
 
 
-@recognize_controller.get(
+@recognize_controller.post(
     "/train",
     summary="Train the model",
     description="Train the model using the dataset.",
