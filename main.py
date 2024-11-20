@@ -14,7 +14,7 @@ from tensorflow.keras.preprocessing.image import (
     img_to_array,
 )
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, status
 from pydantic import BaseModel
 import tempfile
 import uvicorn
@@ -158,7 +158,7 @@ class CosplayCharacterRecognizer:
         ][0]
 
         return character, confidence
- 
+
     def get_image_for_character(self, character):
         """Retourne le chemin relatif de l'image associée à un caractère donné."""
         character_folder = os.path.join(self.config.dataset_path, character)
@@ -240,7 +240,9 @@ async def recognize_character(file: UploadFile = File(...)):
             character=character, confidence=float(confidence), image_url=image_base64
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
     finally:
         os.unlink(tmp_file_path)
 
