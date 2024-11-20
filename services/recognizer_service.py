@@ -11,11 +11,14 @@ from models.recognizer_model import CharacterRecognitionResult
 async def recognize_character_service(file) -> CharacterRecognitionResult:
     if Recognizer is None:
         raise HTTPException(
-            status_code=500, detail="Model not initialized. Please check logs."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Model not initialized. Please check logs.",
         )
 
     if file.content_type is None or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image"
+        )
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
         tmp_file.write(await file.read())

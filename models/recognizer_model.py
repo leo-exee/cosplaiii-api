@@ -22,11 +22,11 @@ from pydantic import BaseModel
 
 class ModelConfig(BaseModel):
     dataset_path: str
-    image_size: tuple = (224, 224)  # ResNet50 requires 224x224 images
+    image_size: tuple = (224, 224)
     batch_size: int = 16
     epochs: int = 20
     learning_rate: float = 0.0001
-    test_split: float = 0.2  # Percentage of data for validation
+    test_split: float = 0.2
 
 
 class CharacterRecognitionResult(BaseModel):
@@ -86,7 +86,6 @@ class CosplayCharacterRecognizer:
 
     def train_model(self):
         """Train the model using images from the dataset."""
-        # Data Augmentation and Data Preparation
         datagen = ImageDataGenerator(
             preprocessing_function=preprocess_input,
             validation_split=self.config.test_split,
@@ -112,11 +111,9 @@ class CosplayCharacterRecognizer:
             class_mode="categorical",
         )
 
-        # Save the label map
         self.label_map = train_gen.class_indices
         self._save_label_map()
 
-        # Create the model
         num_classes = len(train_gen.class_indices)
         self.model = self._create_model(num_classes)
 
@@ -142,13 +139,11 @@ class CosplayCharacterRecognizer:
         if self.model is None:
             raise ValueError("Model must be trained first")
 
-        # Load and preprocess the image
         img = load_img(image_path, target_size=self.config.image_size)
         img_array = img_to_array(img)
         img_array = preprocess_input(img_array)
-        img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
+        img_array = np.expand_dims(img_array, axis=0)
 
-        # Make a prediction
         predictions = self.model.predict(img_array)
         predicted_idx = np.argmax(predictions[0])
         confidence = predictions[0][predicted_idx]
@@ -164,7 +159,6 @@ class CosplayCharacterRecognizer:
         if not os.path.exists(character_folder):
             raise ValueError(f"No folder found for character: {character}")
 
-        # Récupère une image aléatoire ou la première dans le dossier
         images = [
             f
             for f in os.listdir(character_folder)
@@ -173,5 +167,4 @@ class CosplayCharacterRecognizer:
         if not images:
             raise ValueError(f"No images found for character: {character}")
 
-        # Retourne le chemin relatif depuis le dossier dataset
         return os.path.join(character, images[0])
