@@ -139,7 +139,7 @@ class CosplayCharacterRecognizer:
         character = [name for name, idx in self.label_map.items() if idx == predicted_idx][0]
 
         return character, confidence
-
+ 
     def get_image_for_character(self, character):
         """Retourne le chemin relatif de l'image associée à un caractère donné."""
         character_folder = os.path.join(self.config.dataset_path, character)
