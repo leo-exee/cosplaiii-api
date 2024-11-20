@@ -3,10 +3,10 @@ import uvicorn
 
 from controllers.recognize_controller import recognize_controller
 
-app = FastAPI(title="Cosplay Character Recognition")
+app = FastAPI(
+    title="Cosplay Character Recognition",
+    version="1.0.0",
+    description="API for recognizing characters from images",
+)
 
 app.include_router(recognize_controller)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
