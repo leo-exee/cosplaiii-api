@@ -27,7 +27,7 @@ class ModelConfig(BaseModel):
 class CharacterRecognitionResult(BaseModel):
     character: str
     confidence: float
-
+    image_url: str
 
 class CosplayCharacterRecognizer:
     def __init__(self, config: ModelConfig):
@@ -140,6 +140,21 @@ class CosplayCharacterRecognizer:
 
         return character, confidence
 
+    def get_image_for_character(self, character):
+        """Retourne le chemin relatif de l'image associée à un caractère donné."""
+        character_folder = os.path.join(self.config.dataset_path, character)
+        if not os.path.exists(character_folder):
+            raise ValueError(f"No folder found for character: {character}")
+
+        # Récupère une image aléatoire ou la première dans le dossier
+        images = [f for f in os.listdir(character_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if not images:
+            raise ValueError(f"No images found for character: {character}")
+        
+        # Retourne le chemin relatif depuis le dossier dataset
+        return os.path.join("dataset", character, images[0])
+
+
 
 # FastAPI Application
 app = FastAPI(title="Cosplay Character Recognition")
@@ -183,9 +198,13 @@ async def recognize_character(file: UploadFile = File(...)):
 
     try:
         character, confidence = recognizer.predict_character(tmp_file_path)
+        character_image = recognizer.get_image_for_character(character)
+
+        # Construire et retourner le résultat
         return CharacterRecognitionResult(
             character=character,
-            confidence=float(confidence)
+            confidence=float(confidence),
+            image_url=character_image
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
