@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-import uvicorn
 
 from controllers.recognize_controller import recognize_controller
 
