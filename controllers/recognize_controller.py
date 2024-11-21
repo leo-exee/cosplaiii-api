@@ -24,8 +24,10 @@ recognize_controller = APIRouter(
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
     },
 )
-async def recognize_character_controller(file: UploadFile = File(...)):
-    return await recognize_character_service(file)
+async def recognize_character_controller(
+    file: UploadFile = File(...), addToDataset: bool = False
+):
+    return await recognize_character_service(file, addToDataset)
 
 
 @recognize_controller.put(
@@ -38,8 +40,8 @@ async def recognize_character_controller(file: UploadFile = File(...)):
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
     },
 )
-async def add_character_controller(file: UploadFile = File(...)):
-    return await add_character_service("", file)
+async def add_character_controller(name: str, file: UploadFile = File(...)):
+    return await add_character_service(name, file)
 
 
 @recognize_controller.post(
