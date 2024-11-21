@@ -2,6 +2,7 @@ from fastapi import APIRouter, File, UploadFile, status
 
 from models.recognizer_model import CharacterRecognitionResult
 from services.recognizer_service import (
+    add_character_service,
     recognize_character_service,
     train_recognizer_service,
 )
@@ -25,6 +26,20 @@ recognize_controller = APIRouter(
 )
 async def recognize_character_controller(file: UploadFile = File(...)):
     return await recognize_character_service(file)
+
+
+@recognize_controller.put(
+    "/add-character",
+    summary="Add a character to the dataset",
+    description="Add a new character to the dataset with images.",
+    responses={
+        status.HTTP_200_OK: {"description": "Character added successfully"},
+        status.HTTP_400_BAD_REQUEST: {"description": "Bad request"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+)
+async def add_character_controller(file: UploadFile = File(...)):
+    return await add_character_service("", file)
 
 
 @recognize_controller.post(
