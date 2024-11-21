@@ -20,6 +20,11 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint  # type: i
 from pydantic import BaseModel
 
 
+class Character(BaseModel):
+    name: str
+    image_base64: str
+
+
 class ModelConfig(BaseModel):
     dataset_path: str
     image_size: tuple = (224, 224)

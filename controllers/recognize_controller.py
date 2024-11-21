@@ -1,8 +1,9 @@
 from fastapi import APIRouter, File, UploadFile, status
 
-from models.recognizer_model import CharacterRecognitionResult
+from models.recognizer_model import Character, CharacterRecognitionResult
 from services.recognizer_service import (
     add_character_service,
+    get_characters_service,
     recognize_character_service,
     train_recognizer_service,
 )
@@ -28,6 +29,20 @@ async def recognize_character_controller(
     file: UploadFile = File(...), addToDataset: bool = False
 ):
     return await recognize_character_service(file, addToDataset)
+
+
+@recognize_controller.get(
+    "/characters",
+    summary="Get all characters",
+    description="Get all characters from the dataset.",
+    responses={
+        status.HTTP_200_OK: {"description": "Characters retrieved successfully"},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal server error"},
+    },
+    response_model=list[Character],
+)
+async def get_characters_controller():
+    return await get_characters_service()
 
 
 @recognize_controller.put(

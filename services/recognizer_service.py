@@ -5,7 +5,7 @@ import tempfile
 from fastapi import status, Response
 from constants.file_constant import DATASET_PATH
 from constants.app_constant import Recognizer
-from models.recognizer_model import CharacterRecognitionResult
+from models.recognizer_model import Character, CharacterRecognitionResult
 import zipfile
 import uuid
 
@@ -107,6 +107,33 @@ async def train_recognizer_service():
         return Response(
             status_code=status.HTTP_200_OK, content="Model trained successfully"
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+async def get_characters_service() -> list[Character]:
+    try:
+        characters = []
+        for character_name in os.listdir(DATASET_PATH):
+            character_dir = os.path.join(DATASET_PATH, character_name)
+            if os.path.isdir(character_dir):
+                image_files = [
+                    f
+                    for f in os.listdir(character_dir)
+                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".bmp"))
+                ]
+                if image_files:
+                    image_path = os.path.join(character_dir, image_files[0])
+                    with open(image_path, "rb") as image_file:
+                        image_base64 = base64.b64encode(image_file.read()).decode(
+                            "utf-8"
+                        )
+                    characters.append(
+                        Character(name=character_name, image_base64=image_base64)
+                    )
+        return characters
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
