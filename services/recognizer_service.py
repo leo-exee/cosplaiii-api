@@ -35,7 +35,7 @@ async def recognize_character_service(
         character_image = Recognizer.get_image_for_character(character)
         with open(os.path.join(DATASET_PATH, character_image), "rb") as image_file:
             image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-        if add_to_dataset:
+        if add_to_dataset and confidence > 0.9:
             character_dir = os.path.join(DATASET_PATH, character)
             os.makedirs(character_dir, exist_ok=True)
             unique_filename = f"{uuid.uuid4()}.jpg"
