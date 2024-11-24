@@ -1,4 +1,5 @@
 import base64
+import shutil
 from fastapi import HTTPException, UploadFile
 import os
 import tempfile
@@ -34,10 +35,12 @@ async def recognize_character_service(
         character_image = Recognizer.get_image_for_character(character)
         with open(os.path.join(DATASET_PATH, character_image), "rb") as image_file:
             image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-        if add_to_dataset and confidence > 0.98:
-            random_name = f"{uuid.uuid4()}.jpg"
-            dst_file_path = os.path.join(DATASET_PATH, random_name)
-            os.rename(sanitized_file_path, dst_file_path)
+        if add_to_dataset:
+            character_dir = os.path.join(DATASET_PATH, character)
+            os.makedirs(character_dir, exist_ok=True)
+            unique_filename = f"{uuid.uuid4()}.jpg"
+            dst_file_path = os.path.join(character_dir, unique_filename)
+            shutil.copy2(tmp_file_path, dst_file_path)
         return CharacterRecognitionResult(
             character=character, confidence=float(confidence), image_base64=image_base64
         )
@@ -46,7 +49,8 @@ async def recognize_character_service(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
     finally:
-        os.unlink(tmp_file_path)
+        if os.path.exists(tmp_file_path):
+            os.unlink(tmp_file_path)
 
 
 async def add_character_service(name: str, file: UploadFile):
